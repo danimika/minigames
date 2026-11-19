@@ -23,7 +23,10 @@ A planilha recebe uma aba `Scores` com as colunas: Data, Jogo, Jogador, Pontos, 
 
 1. No editor do Apps Script, crie ou atualize os arquivos `Code.gs`, `Index`, `Deslize` e `Coroas` (HTML) com o conteúdo desta pasta.
 2. Ajuste `SHEET_ID` em `Code.gs` se for usar outra planilha.
-3. Para testar, use o link `/dev`. Para outras pessoas jogarem: **Implantar → Nova implantação → App da Web**, com "Executar como: eu" e "Quem pode acessar: qualquer pessoa".
+3. Para testar no computador, use o link `/dev` (sempre mostra o código salvo; no celular costuma não abrir).
+4. O link para jogar (inclusive no celular) é o da implantação **Minigames** (App da Web, "Executar como: eu", "Quem pode acessar: qualquer pessoa"):
+   https://script.google.com/macros/s/AKfycbxap0AhLvUKMbhlchR5ls_9rhNUyUHjKoX1Tddq4_ba80ciGt0RLKYEmZ9N2GRXSWWp/exec
+5. O `/exec` mostra uma versão fixa. Depois de mudar o código: **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar**. O link continua o mesmo.
 
 ## Testar localmente
 
