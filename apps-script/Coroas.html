@@ -68,8 +68,14 @@
   .cell svg { width: 58%; height: 58%; color: var(--ink); filter: drop-shadow(0 1px 0 rgba(255,255,255,.35)); }
   .cell.bad { background-image: repeating-linear-gradient(45deg, rgba(255,59,92,.35) 0 4px, transparent 4px 9px); }
   .cell.bad svg { color: var(--danger); filter: none; }
-  .cell.flash { animation: flash 1s ease-out 2; }
-  @keyframes flash { 0%, 100% { filter: none; } 40% { filter: brightness(1.5) saturate(1.3); box-shadow: inset 0 0 0 3px #fff; } }
+  /* dica: motivo (claro), casas que viram X (tracejado vermelho), casa da coroa (contorno branco) */
+  .cell.hr::after { content: ""; position: absolute; inset: 0; background: rgba(255,255,255,.38); pointer-events: none; }
+  .cell.ht::after, .cell.hc::after {
+    content: ""; position: absolute; inset: 3px; border-radius: 5px; pointer-events: none;
+    border: 2.5px dashed var(--danger); background: rgba(255,59,92,.12); animation: pulse 1.1s ease-in-out infinite;
+  }
+  .cell.hc::after { border: 3px solid #fff; background: rgba(255,255,255,.25); box-shadow: 0 0 12px #fff; }
+  @keyframes pulse { 50% { opacity: .45; } }
   #board.won .cell svg { animation: bounce .5s ease-out both; animation-delay: calc(var(--i) * 60ms); }
   @keyframes bounce { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
 
@@ -82,7 +88,7 @@
   .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
   .actions .btn { padding: 10px; font-size: 14px; }
   .diff { text-align: center; font-size: 12px; color: var(--muted); letter-spacing: .5px; margin: -2px 0 -2px; }
-  #msg { min-height: 18px; text-align: center; font-size: 13px; color: var(--accent); }
+  #msg { min-height: 18px; text-align: center; font-size: 13px; line-height: 1.45; color: var(--accent); }
   .rules { font-size: 12px; color: var(--muted); line-height: 1.5; }
   .rules b { color: var(--text); }
 
@@ -293,13 +299,15 @@
     return last; // raríssimo: aceita mesmo sem unicidade (a vitória é checada pelas regras)
   }
 
-  // ---------- dificuldade: resolve "como uma pessoa" e vê que técnica foi preciso usar ----------
+  // ---------- motor de lógica: resolve "como uma pessoa" (usado na dificuldade e nas dicas) ----------
+  // técnicas, da mais simples para a mais elaborada:
   // 1: única casa possível numa linha/coluna/região
   // 2: uma casa que eliminaria todas as opções de alguma linha/coluna/região vira X
   // 3: k regiões presas em k linhas (ou colunas, e variações) liberam o resto dessas linhas
   // 4: testar uma coroa e ver que ela leva a contradição
-  // 99: só resolve chutando (descartado)
-  function rate(n, reg) {
+  // estado: Uint8Array n*n com 0 = livre, 1 = X, 2 = coroa
+  // unidades: 0..n-1 linhas, n..2n-1 colunas, 2n..3n-1 regiões
+  function makeLogic(n, reg) {
     const N = n * n;
     const rowOf = (i) => (i / n) | 0, colOf = (i) => i % n, regOf = (i) => reg[rowOf(i)][colOf(i)];
     const typeOf = [rowOf, colOf, regOf];
@@ -317,6 +325,9 @@
       return hit;
     }));
     const bits = (x) => { let k = 0; while (x) { x &= x - 1; k++; } return k; };
+    const hasCrown = (st, u) => units[u].some((i) => st[i] === 2);
+    const cands = (st, u) => units[u].filter((i) => st[i] === 0);
+    let fail = -1; // unidade que ficou sem opção na última contradição
 
     function place(st, i) {
       st[i] = 2;
@@ -325,21 +336,91 @@
     }
     function singles(st) { // -1 contradição, 0 nada, 1 mudou
       let changed = 0;
-      for (const u of units) {
+      for (let u = 0; u < units.length; u++) {
         let crowns = 0, k = 0, cand = -1;
-        for (const i of u) { if (st[i] === 2) crowns++; else if (st[i] === 0) { k++; cand = i; } }
-        if (crowns > 1) return -1;
+        for (const i of units[u]) { if (st[i] === 2) crowns++; else if (st[i] === 0) { k++; cand = i; } }
+        if (crowns > 1) { fail = u; return -1; }
         if (crowns === 1) continue;
-        if (k === 0) return -1;
-        if (k === 1) { if (!place(st, cand)) return -1; changed = 1; }
+        if (k === 0) { fail = u; return -1; }
+        if (k === 1) { if (!place(st, cand)) { fail = u; return -1; } changed = 1; }
       }
       return changed;
     }
+
+    // --- buscas: encontram a próxima dedução sem aplicar ---
+    function findSingle(st) {
+      for (let u = 0; u < units.length; u++) {
+        if (hasCrown(st, u)) continue;
+        const C = cands(st, u);
+        if (C.length === 1) return { u, cell: C[0] };
+      }
+      return null;
+    }
+    function findAttack(st) {
+      const order = range(units.length).filter((u) => !hasCrown(st, u))
+        .map((u) => [u, cands(st, u)]).filter(([, C]) => C.length)
+        .sort((a, b) => a[1].length - b[1].length);
+      for (const [u, C] of order) {
+        const targets = [];
+        for (let i = 0; i < N; i++) {
+          if (st[i] === 0 && !C.includes(i) && C.every((j) => A[i * N + j])) targets.push(i);
+        }
+        if (targets.length) return { u, C, targets };
+      }
+      return null;
+    }
+    function findGroup(st) {
+      for (let k = 2; k < n; k++) {
+        for (let ta = 0; ta < 3; ta++) for (let tb = 0; tb < 3; tb++) {
+          if (ta === tb) continue;
+          const open = [];
+          for (let a = 0; a < n; a++) {
+            const u = ta * n + a;
+            if (hasCrown(st, u)) continue;
+            let mask = 0;
+            for (const i of units[u]) if (st[i] === 0) mask |= 1 << typeOf[tb](i);
+            open.push({ a, mask });
+          }
+          const m = open.length;
+          if (k >= m) continue;
+          for (let s = 1; s < (1 << m); s++) {
+            if (bits(s) !== k) continue;
+            let uni = 0, amask = 0;
+            const as = [];
+            for (let x = 0; x < m; x++) if ((s >> x) & 1) { uni |= open[x].mask; amask |= 1 << open[x].a; as.push(open[x].a); }
+            if (bits(uni) !== k) continue;
+            const targets = [], reason = [];
+            for (let i = 0; i < N; i++) {
+              if (st[i] !== 0) continue;
+              const inB = (uni >> typeOf[tb](i)) & 1, inA = (amask >> typeOf[ta](i)) & 1;
+              if (inB && !inA) targets.push(i);
+              if (inA) reason.push(i);
+            }
+            if (targets.length) {
+              const bs = range(n).filter((b) => (uni >> b) & 1);
+              return { ta, tb, as, bs, reason, targets };
+            }
+          }
+        }
+      }
+      return null;
+    }
+    function findTrial(st) {
+      for (let i = 0; i < N; i++) {
+        if (st[i] !== 0) continue;
+        const t = st.slice();
+        fail = -1;
+        if (!place(t, i) || propagate(t) < 0) return { cell: i, u: fail };
+      }
+      return null;
+    }
+
+    // --- passos: aplicam todas as deduções de um tipo ---
     function attackStep(st) {
       let changed = 0;
-      for (const u of units) {
-        if (u.some((i) => st[i] === 2)) continue;
-        const C = u.filter((i) => st[i] === 0);
+      for (let u = 0; u < units.length; u++) {
+        if (hasCrown(st, u)) continue;
+        const C = cands(st, u);
         for (let i = 0; i < N; i++) {
           if (st[i] !== 0 || C.includes(i)) continue;
           if (C.every((j) => A[i * N + j])) { st[i] = 1; changed = 1; }
@@ -353,10 +434,10 @@
         if (ta === tb) continue;
         const open = [];
         for (let a = 0; a < n; a++) {
-          const u = units[ta * n + a];
-          if (u.some((i) => st[i] === 2)) continue;
+          const u = ta * n + a;
+          if (hasCrown(st, u)) continue;
           let mask = 0;
-          for (const i of u) if (st[i] === 0) mask |= 1 << typeOf[tb](i);
+          for (const i of units[u]) if (st[i] === 0) mask |= 1 << typeOf[tb](i);
           open.push({ a, mask });
         }
         const m = open.length;
@@ -382,26 +463,30 @@
       }
     }
     function trialStep(st) {
-      for (let i = 0; i < N; i++) {
-        if (st[i] !== 0) continue;
-        const t = st.slice();
-        if (!place(t, i) || propagate(t) < 0) { st[i] = 1; return 1; }
-      }
-      return 0;
+      const f = findTrial(st);
+      if (!f) return 0;
+      st[f.cell] = 1;
+      return 1;
     }
 
-    const st = new Uint8Array(N);
+    return { N, units, att, place, singles, attackStep, groupStep, trialStep, findSingle, findAttack, findGroup, findTrial };
+  }
+
+  // nível de dificuldade do puzzle (99 = só resolve chutando)
+  function rate(n, reg) {
+    const L = makeLogic(n, reg);
+    const st = new Uint8Array(L.N);
     let level = 1;
     for (;;) {
-      const s = singles(st);
+      const s = L.singles(st);
       if (s < 0) return 99;
       let crowns = 0;
-      for (let i = 0; i < N; i++) if (st[i] === 2) crowns++;
+      for (let i = 0; i < L.N; i++) if (st[i] === 2) crowns++;
       if (crowns === n) return level;
       if (s) continue;
-      if (attackStep(st)) { level = Math.max(level, 2); continue; }
-      if (groupStep(st)) { level = Math.max(level, 3); continue; }
-      if (trialStep(st)) { level = Math.max(level, 4); continue; }
+      if (L.attackStep(st)) { level = Math.max(level, 2); continue; }
+      if (L.groupStep(st)) { level = Math.max(level, 3); continue; }
+      if (L.trialStep(st)) { level = Math.max(level, 4); continue; }
       return 99;
     }
   }
@@ -441,6 +526,7 @@
       Object.assign(S, { n, reg: p.reg, sol: p.sol, level: p.level, colors, marks: range(n).map(() => Array(n).fill(0)), elapsed: 0, hints: 0, won: false });
       undo = [];
       saved = false;
+      clearHint();
       persist();
       buildBoard();
       boardEl.classList.remove('loading');
@@ -503,6 +589,10 @@
       const d = cellEls[r][c], m = S.marks[r][c];
       d.innerHTML = m === 1 ? '<span class="x">✕</span>' : m === 2 ? CROWN : '';
       d.classList.toggle('bad', m === 2 && bad.has(r + ',' + c));
+      const k = r * S.n + c, h = hintShow;
+      d.classList.toggle('hr', !!(h && h.reason && h.reason.includes(k)));
+      d.classList.toggle('ht', !!(h && h.targets && h.targets.includes(k)));
+      d.classList.toggle('hc', !!(h && h.crown === k));
       if (m === 2) d.style.setProperty('--i', i++);
     }
     $('btnUndo').disabled = !undo.length || S.won;
@@ -528,14 +618,10 @@
     }, 1000);
   }
 
-  function msg(text) {
-    $('msg').textContent = text;
-    clearTimeout(msg.t);
-    msg.t = setTimeout(() => { $('msg').textContent = ''; }, 3000);
-  }
-
   // ---------- interação ----------
   let press = null;
+  let hintShow = null; // { reason:[i], targets:[i], crown:i, text }
+  function clearHint() { if (hintShow) { hintShow = null; $('msg').textContent = ''; } }
   const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest ? el.closest('.cell') : null; };
 
   boardEl.addEventListener('pointerdown', (e) => {
@@ -565,6 +651,7 @@
       if (S.marks[lr][lc] === 0) S.marks[lr][lc] = 1;
     }
     press.last = [r, c];
+    clearHint();
     render();
   });
 
@@ -573,7 +660,7 @@
     const p = press;
     press = null;
     if (!p.drag) S.marks[p.r][p.c] = (S.marks[p.r][p.c] + 1) % 3;
-    if (JSON.stringify(p.before) !== JSON.stringify(S.marks)) { undo.push(p.before); if (undo.length > 200) undo.shift(); }
+    if (JSON.stringify(p.before) !== JSON.stringify(S.marks)) { undo.push(p.before); if (undo.length > 200) undo.shift(); clearHint(); }
     render();
     persist();
   }
@@ -583,6 +670,7 @@
   $('btnUndo').addEventListener('click', () => {
     if (!undo.length || S.won) return;
     S.marks = undo.pop();
+    clearHint();
     render(); persist();
   });
 
@@ -590,32 +678,93 @@
     if (S.won || !S.marks.some((row) => row.some(Boolean))) return;
     undo.push(marksCopy());
     S.marks = range(S.n).map(() => Array(S.n).fill(0));
+    clearHint();
     render(); persist();
   });
 
-  function flash(r, c) {
-    const d = cellEls[r][c];
-    d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash');
+  // ---------- dica: mostra a próxima dedução lógica (não revela a resposta) ----------
+  const COLOR_NAMES = { '#f6c453': 'amarela', '#f08aa6': 'rosa', '#6fd08c': 'verde', '#6aa8ff': 'azul', '#b79bff': 'roxa',
+    '#ff9e5e': 'laranja', '#5ed3d1': 'turquesa', '#dfe3ec': 'cinza', '#c9a27a': 'bege' };
+  const joinPt = (a) => (a.length < 2 ? String(a[0]) : a.slice(0, -1).join(', ') + ' e ' + a[a.length - 1]);
+  const regName = (g) => COLOR_NAMES[S.colors[g]] || String(g + 1);
+  function unitName(u) {
+    const t = Math.floor(u / S.n), k = u % S.n;
+    return t === 0 ? 'linha ' + (k + 1) : t === 1 ? 'coluna ' + (k + 1) : 'região ' + regName(k);
+  }
+  function unitsName(t, idxs) {
+    if (t === 2) return 'regiões ' + joinPt(idxs.map(regName));
+    return (t === 0 ? 'linhas ' : 'colunas ') + joinPt(idxs.map((k) => k + 1));
+  }
+  const PLURAL = ['linhas', 'colunas', 'regiões'];
+
+  let logic = null, logicFor = null;
+  function getLogic() {
+    if (logicFor !== S.reg) { logic = makeLogic(S.n, S.reg); logicFor = S.reg; }
+    return logic;
+  }
+
+  function findHint() {
+    const { n, sol, marks } = S;
+    const idx = (r, c) => r * n + c;
+    // 1) erros do jogador
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (marks[r][c] === 2 && sol[r] !== c) return { targets: [idx(r, c)], text: 'Esta coroa está no lugar errado.' };
+    }
+    for (let r = 0; r < n; r++) {
+      if (marks[r][sol[r]] === 1) return { targets: [idx(r, sol[r])], text: 'Este X está errado: confira de novo essa casa.' };
+    }
+    // 2) estado atual, já contando o que as coroas colocadas eliminam
+    const L = getLogic();
+    const st = new Uint8Array(L.N);
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) st[idx(r, c)] = marks[r][c];
+    const implied = [];
+    for (let i = 0; i < L.N; i++) if (marks[(i / n) | 0][i % n] === 2) {
+      for (const j of L.att[i]) if (st[j] === 0) { st[j] = 1; implied.push([i, j]); }
+    }
+    // avisa quando a dedução conta com casas que as coroas já eliminam (mas o jogador não marcou X)
+    const impliedSet = new Set(implied.map(([, j]) => j));
+    const note = (cells) => (cells.some((j) => impliedSet.has(j)) ? ' (contando as casas que as coroas já colocadas eliminam)' : '');
+    let h;
+    if ((h = L.findSingle(st))) {
+      return { reason: L.units[h.u], crown: h.cell,
+        text: 'Só sobrou uma casa possível na ' + unitName(h.u) + note(L.units[h.u]) + ': ela precisa da coroa.' };
+    }
+    if ((h = L.findAttack(st))) {
+      return { reason: h.C, targets: h.targets,
+        text: 'As opções da ' + unitName(h.u) + ' estão destacadas' + note(L.units[h.u]) +
+          '. Uma coroa em qualquer casa marcada eliminaria todas elas, então essas casas são X.' };
+    }
+    if ((h = L.findGroup(st))) {
+      const aCells = [].concat(...h.as.map((a) => L.units[h.ta * n + a]));
+      return { reason: h.reason, targets: h.targets,
+        text: 'As ' + unitsName(h.ta, h.as) + ' só têm opções dentro das ' + unitsName(h.tb, h.bs) + note(aCells) +
+          '. Essas ' + PLURAL[h.tb] + ' ficam "reservadas" para elas, então as casas marcadas são X.' };
+    }
+    if ((h = L.findTrial(st))) {
+      return { reason: h.u >= 0 ? L.units[h.u] : [], targets: [h.cell],
+        text: 'Teste: se a casa marcada tivesse coroa, seguindo as deduções' +
+          (h.u >= 0 ? ' a ' + unitName(h.u) + ' ficaria sem nenhuma opção' : ' haveria um conflito') + '. Então ela é X.' };
+    }
+    if (implied.length) {
+      const i = implied[0][0];
+      return { reason: [i], targets: implied.filter(([a]) => a === i).map(([, j]) => j),
+        text: 'Esta coroa já elimina as casas marcadas: mesma linha, coluna, região e vizinhas.' };
+    }
+    return { text: 'Não achei uma dedução nova. Confira suas marcações.' };
   }
 
   $('btnHint').addEventListener('click', () => {
-    if (S.won || boardEl.classList.contains('loading')) return;
-    undo.push(marksCopy());
+    if (S.won || boardEl.classList.contains('loading') || hintShow) return;
+    try {
+      hintShow = findHint();
+    } catch (err) {
+      $('msg').textContent = 'Erro na dica: ' + (err && err.message ? err.message : err);
+      return;
+    }
     S.hints++;
-    const { n, sol, marks } = S;
-    // 1) coroa no lugar errado
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-      if (marks[r][c] === 2 && sol[r] !== c) { marks[r][c] = 1; render(); persist(); flash(r, c); msg('Essa coroa estava no lugar errado.'); return; }
-    }
-    // 2) X onde deveria ter coroa
-    for (let r = 0; r < n; r++) if (marks[r][sol[r]] === 1) {
-      marks[r][sol[r]] = 0; render(); persist(); flash(r, sol[r]); msg('Esse X estava numa casa que precisa de coroa.'); return;
-    }
-    // 3) revela uma coroa
-    const missing = range(n).filter((r) => marks[r][sol[r]] !== 2);
-    const r = missing[rnd(missing.length)];
-    marks[r][sol[r]] = 2;
-    render(); persist(); flash(r, sol[r]); msg('Uma coroa revelada.');
+    persist();
+    render();
+    $('msg').textContent = hintShow.text;
   });
 
   // ---------- vitória / pontuação ----------
@@ -703,7 +852,7 @@
   }
 
   // exposto só para testes
-  window.__coroas = { generate, solve, rate, uniquePuzzle };
+  window.__coroas = { generate, solve, rate, uniquePuzzle, findHint, state: () => S, render: () => render() };
 })();
 </script>
 </body>

@@ -5,7 +5,7 @@ Minigames em HTML servidos por um web app do Google Apps Script. As pontuações
 ## Jogos
 
 - **Deslize**: arraste blocos para os lados e complete linhas. A cada jogada sobe uma linha nova por baixo. Blocos da mesma cor lado a lado valem mais pontos: um grupo de N casas vale N² × 10, e uma linha de uma cor só vale o dobro. A pontuação é multiplicada pela fase e pelo combo. A partida acaba quando um bloco passa do topo.
-- **Coroas**: puzzle de lógica 8×8. Coloque uma coroa em cada linha, coluna e região de cor, sem que duas coroas se encostem (nem na diagonal). Os tabuleiros são gerados na hora, sempre com solução única, e a dificuldade sobe com a fase: o gerador resolve cada puzzle como uma pessoa faria e escolhe os que exigem técnicas mais elaboradas. Pontos pela dificuldade, com bônus por tempo e desconto por dica.
+- **Coroas**: puzzle de lógica 8×8. Coloque uma coroa em cada linha, coluna e região de cor, sem que duas coroas se encostem (nem na diagonal). Os tabuleiros são gerados na hora, sempre com solução única, e a dificuldade sobe com a fase: o gerador resolve cada puzzle como uma pessoa faria e escolhe os que exigem técnicas mais elaboradas. A **Dica** não revela a resposta: ela mostra o próximo raciocínio que dá para fazer (destaca o motivo, marca as casas que viram X e explica). Pontos pela dificuldade, com bônus por tempo e desconto por dica.
 
 ## Estrutura
 
