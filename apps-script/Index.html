@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<title>Minigames</title>
+<style>
+  :root { --bg1: #1b1240; --bg2: #071a2e; --text: #f1f0ff; --muted: #a3a8d0; --accent: #ffd166; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    min-height: 100%;
+    background: radial-gradient(120% 80% at 50% 0%, var(--bg1), var(--bg2) 70%) fixed, var(--bg2);
+    color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { width: min(480px, 100%); margin: 0 auto; padding: 24px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 28px; font-weight: 900; letter-spacing: .5px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  input {
+    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(0,0,0,.25); color: var(--text); font: inherit; font-size: 15px;
+  }
+  .games { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .game {
+    display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 16px; text-decoration: none; color: inherit;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+  }
+  .game:hover { background: rgba(255,255,255,.1); }
+  .game.soon { opacity: .45; pointer-events: none; }
+  .game b { font-size: 16px; }
+  .thumb { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; aspect-ratio: 8 / 4; }
+  .thumb i { border-radius: 3px; }
+  .c1 { background: #e94f7c; } .c2 { background: #1fb3a6; } .c3 { background: #f2a93b; } .c4 { background: #7b5cff; }
+  section h2 { font-size: 15px; margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { padding: 7px 6px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.08); }
+  th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  th.n { text-align: right; }
+  td:first-child { color: var(--accent); font-weight: 800; width: 28px; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Minigames</h1>
+    <p class="muted">Escolha um jogo. Pontuações ficam salvas na planilha.</p>
+  </div>
+
+  <div>
+    <label for="nome">Seu nome</label>
+    <input id="nome" maxlength="40" placeholder="Como você quer aparecer no ranking">
+  </div>
+
+  <div class="games">
+    <a class="game" href="<?= baseUrl ?>?jogo=deslize" target="_top">
+      <div class="thumb">
+        <i class="c4" style="grid-column:1/5"></i><i></i><i class="c1"></i><i class="c2" style="grid-column:7/9"></i>
+        <i></i><i class="c3" style="grid-column:2/5"></i><i class="c2" style="grid-column:5/7"></i><i></i><i class="c1"></i>
+        <i class="c2" style="grid-column:1/3"></i><i class="c1"></i><i></i><i class="c3" style="grid-column:5/8"></i><i class="c1"></i>
+        <i class="c3" style="grid-column:1/4"></i><i class="c1"></i><i class="c4" style="grid-column:5/9"></i>
+      </div>
+      <b>Deslize</b>
+      <span class="muted">Arraste blocos e complete linhas</span>
+    </a>
+    <div class="game soon">
+      <div class="thumb"></div>
+      <b>Jogo 2</b>
+      <span class="muted">Em breve</span>
+    </div>
+  </div>
+
+  <section>
+    <h2>Ranking · Deslize</h2>
+    <table>
+      <thead><tr><th>#</th><th>Jogador</th><th class="n">Fase</th><th class="n">Pontos</th></tr></thead>
+      <tbody id="rank"><tr><td></td><td class="muted" colspan="3">Carregando…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+  const NAME_KEY = 'mg_nome';
+  const nome = document.getElementById('nome');
+  try { nome.value = JSON.parse(localStorage.getItem(NAME_KEY) || '""'); } catch (e) {}
+  nome.addEventListener('input', () => {
+    try { localStorage.setItem(NAME_KEY, JSON.stringify(nome.value.trim())); } catch (e) {}
+  });
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  google.script.run
+    .withSuccessHandler((rows) => {
+      const tb = document.getElementById('rank');
+      if (!rows.length) { tb.innerHTML = '<tr><td></td><td class="muted" colspan="3">Ninguém jogou ainda.</td></tr>'; return; }
+      tb.innerHTML = rows.map((r, i) =>
+        `<tr><td>${i + 1}</td><td>${esc(r.nome)}</td><td class="n">${r.fase}</td><td class="n">${r.pontos.toLocaleString('pt-BR')}</td></tr>`
+      ).join('');
+    })
+    .withFailureHandler((err) => {
+      document.getElementById('rank').innerHTML = `<tr><td></td><td class="muted" colspan="3">Erro: ${esc(err.message || err)}</td></tr>`;
+    })
+    .getTop('deslize', 10);
+</script>
+</body>
+</html>
