@@ -142,7 +142,7 @@
   <div class="rules">
     Coloque <b>uma coroa</b> em cada <b>linha</b>, <b>coluna</b> e <b>região de cor</b>.
     Duas coroas <b>não podem se encostar</b>, nem na diagonal.
-    Toque 1× para marcar <b>X</b>, 2× para <b>coroa</b>. Arraste para marcar vários X.
+    Toque 1× para marcar <b>X</b>, 2× para <b>coroa</b>. Arraste para marcar vários X (ou, começando num X, para apagar).
   </div>
 </div>
 
@@ -641,14 +641,17 @@
     if (!press.drag) {
       press.drag = true;
       press.last = [press.r, press.c];
-      if (S.marks[press.r][press.c] === 0) S.marks[press.r][press.c] = 1;
+      // começou num X: o arrasto apaga X; senão, marca X (coroas nunca mudam)
+      press.from = S.marks[press.r][press.c] === 1 ? 1 : 0;
+      press.to = press.from === 1 ? 0 : 1;
+      if (S.marks[press.r][press.c] === press.from) S.marks[press.r][press.c] = press.to;
     }
-    // marca todas as casas no caminho (movimentos rápidos pulam casas)
+    // aplica em todas as casas do caminho (movimentos rápidos pulam casas)
     let [lr, lc] = press.last;
     if (lr === r && lc === c) return;
     while (lr !== r || lc !== c) {
       lr += Math.sign(r - lr); lc += Math.sign(c - lc);
-      if (S.marks[lr][lc] === 0) S.marks[lr][lc] = 1;
+      if (S.marks[lr][lc] === press.from) S.marks[lr][lc] = press.to;
     }
     press.last = [r, c];
     clearHint();
