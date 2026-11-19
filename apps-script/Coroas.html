@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Coroas</title>
+<style>
+  :root {
+    --bg1: #1b1240; --bg2: #071a2e;
+    --text: #f1f0ff; --muted: #a3a8d0; --accent: #ffd166; --danger: #ff3b5c;
+    --ink: #1c1830; --line: #12101f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: radial-gradient(120% 80% at 50% 0%, var(--bg1), var(--bg2) 70%) fixed, var(--bg2);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app {
+    --w: min(94vw, 460px, max(280px, calc(100vh - 270px)));
+    width: var(--w);
+    margin: 0 auto;
+    padding: 12px 0 16px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  @supports (height: 100svh) { #app { --w: min(94vw, 460px, max(280px, calc(100svh - 270px))); } }
+
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .title { font-weight: 800; letter-spacing: .5px; font-size: 18px; }
+  .btn {
+    appearance: none; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.08);
+    color: var(--text); font: inherit; font-size: 13px; font-weight: 600;
+    padding: 7px 12px; border-radius: 10px; cursor: pointer; text-decoration: none;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); color: #2a1a00; border-color: transparent; }
+  .btn[disabled] { opacity: .45; pointer-events: none; }
+
+  .hud { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 8px; }
+  .stat {
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 12px; padding: 6px 8px; text-align: center;
+  }
+  .stat .lbl { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .stat .val { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat.main .val { color: var(--accent); font-size: 22px; }
+
+  #board {
+    position: relative; width: var(--w); height: var(--w);
+    display: grid; border-radius: 12px; overflow: hidden; touch-action: none;
+    box-shadow: 0 0 0 3px var(--line), 0 10px 30px rgba(0,0,0,.45);
+    background: var(--line);
+  }
+  .cell {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    background: var(--c); cursor: pointer;
+  }
+  .cell::before { /* bordas finas + bordas grossas entre regiões */
+    content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: var(--b);
+  }
+  .cell:hover::after { content: ""; position: absolute; inset: 0; background: rgba(255,255,255,.18); pointer-events: none; }
+  .cell .x { font-size: calc(var(--w) / var(--n) * .32); color: rgba(28,24,48,.55); font-weight: 700; line-height: 1; }
+  .cell svg { width: 58%; height: 58%; color: var(--ink); filter: drop-shadow(0 1px 0 rgba(255,255,255,.35)); }
+  .cell.bad { background-image: repeating-linear-gradient(45deg, rgba(255,59,92,.35) 0 4px, transparent 4px 9px); }
+  .cell.bad svg { color: var(--danger); filter: none; }
+  .cell.flash { animation: flash 1s ease-out 2; }
+  @keyframes flash { 0%, 100% { filter: none; } 40% { filter: brightness(1.5) saturate(1.3); box-shadow: inset 0 0 0 3px #fff; } }
+  #board.won .cell svg { animation: bounce .5s ease-out both; animation-delay: calc(var(--i) * 60ms); }
+  @keyframes bounce { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
+
+  #gen {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(7, 10, 25, .75); font-weight: 700; color: var(--muted); z-index: 5;
+  }
+  #board.loading #gen { display: flex; }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .actions .btn { padding: 10px; font-size: 14px; }
+  .diff { text-align: center; font-size: 12px; color: var(--muted); letter-spacing: .5px; margin: -2px 0 -2px; }
+  #msg { min-height: 18px; text-align: center; font-size: 13px; color: var(--accent); }
+  .rules { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .rules b { color: var(--text); }
+
+  #overlay {
+    position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    background: rgba(5, 6, 20, .7); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    padding: 16px;
+  }
+  #overlay.hidden { display: none; }
+  .card {
+    width: min(340px, 100%); background: linear-gradient(180deg, #2a2160, #17143a);
+    border: 1px solid rgba(255,255,255,.15); border-radius: 18px; padding: 20px; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  .card h2 { font-size: 24px; margin-bottom: 6px; }
+  .card .big { font-size: 40px; font-weight: 900; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .card .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+  .card input {
+    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(0,0,0,.25); color: var(--text); font: inherit; font-size: 15px; margin-bottom: 8px;
+    -webkit-user-select: text; user-select: text;
+  }
+  .card .row { display: flex; gap: 8px; justify-content: center; margin-top: 6px; }
+  .card .row .btn { flex: 1; padding: 10px; font-size: 14px; }
+  #saveStatus { min-height: 18px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <a class="btn" id="btnMenu" href="#" target="_top" style="visibility:hidden">‹ Menu</a>
+    <div class="title">COROAS</div>
+    <button class="btn" id="btnRestart">Recomeçar</button>
+  </div>
+
+  <div class="hud">
+    <div class="stat"><span class="lbl">Fase</span><span class="val" id="level">1</span></div>
+    <div class="stat main"><span class="lbl">Pontos</span><span class="val" id="score">0</span></div>
+    <div class="stat"><span class="lbl">Tempo</span><span class="val" id="time">0:00</span></div>
+  </div>
+
+  <div class="diff" id="diff"></div>
+  <div id="board" class="loading"><div id="gen">Gerando tabuleiro…</div></div>
+
+  <div class="actions">
+    <button class="btn" id="btnUndo">Desfazer</button>
+    <button class="btn" id="btnHint">Dica</button>
+    <button class="btn" id="btnClear">Limpar</button>
+  </div>
+  <div id="msg"></div>
+  <div class="rules">
+    Coloque <b>uma coroa</b> em cada <b>linha</b>, <b>coluna</b> e <b>região de cor</b>.
+    Duas coroas <b>não podem se encostar</b>, nem na diagonal.
+    Toque 1× para marcar <b>X</b>, 2× para <b>coroa</b>. Arraste para marcar vários X.
+  </div>
+</div>
+
+<div id="overlay" class="hidden">
+  <div class="card">
+    <h2>Resolvido!</h2>
+    <div class="big" id="winPts">+0</div>
+    <div class="sub" id="winInfo"></div>
+    <input id="nome" maxlength="40" placeholder="Seu nome" autocomplete="nickname">
+    <div id="saveStatus"></div>
+    <div class="row">
+      <button class="btn" id="btnSave">Salvar</button>
+      <button class="btn primary" id="btnNext">Próxima fase</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const GAME_ID = 'coroas';
+  const STATE_KEY = 'mg_coroas_state', NAME_KEY = 'mg_nome';
+  const COLORS = ['#f6c453', '#f08aa6', '#6fd08c', '#6aa8ff', '#b79bff', '#ff9e5e', '#5ed3d1', '#dfe3ec', '#c9a27a'];
+  const CROWN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.5 7.5l5 4 4.5-7 4.5 7 5-4-2 10.5h-15zM4.5 19.5h15V22h-15z"/></svg>';
+  const hasGAS = typeof google !== 'undefined' && google.script && google.script.run;
+
+  const $ = (id) => document.getElementById(id);
+  const boardEl = $('board');
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  // ---------- gerador ----------
+  const rnd = (n) => Math.floor(Math.random() * n);
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const range = (n) => [...Array(n).keys()];
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const SIZE = 8; // tamanho fixo do tabuleiro
+  // dificuldade alvo por fase (ver rate())
+  const targetFor = (fase) => (fase <= 2 ? 2 : fase <= 5 ? 3 : 4);
+  const DIFF_NAME = { 1: 'Fácil', 2: 'Fácil', 3: 'Média', 4: 'Difícil' };
+
+  // posição aleatória válida: 1 por linha/coluna, sem encostar
+  function randomQueens(n) {
+    const pos = [], used = Array(n).fill(false);
+    (function bt(r) {
+      if (r === n) return true;
+      for (const c of shuffle(range(n))) {
+        if (used[c] || (r > 0 && Math.abs(pos[r - 1] - c) <= 1)) continue;
+        used[c] = true; pos[r] = c;
+        if (bt(r + 1)) return true;
+        used[c] = false;
+      }
+      return false;
+    })(0);
+    return pos;
+  }
+
+  // cada coroa vira semente de uma região; regiões crescem aleatoriamente
+  function growRegions(n, q) {
+    const reg = Array.from({ length: n }, () => Array(n).fill(-1));
+    q.forEach((c, r) => { reg[r][c] = r; });
+    const weight = range(n).map(() => 0.5 + Math.random());
+    const size = Array(n).fill(1), maxSize = Math.ceil(n * 1.8); // evita regiões gigantes
+    let left = n * n - n;
+    while (left > 0) {
+      let cand = [];
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+        if (reg[r][c] !== -1) continue;
+        for (const [dr, dc] of DIRS) {
+          const rr = r + dr, cc = c + dc;
+          if (rr >= 0 && rr < n && cc >= 0 && cc < n && reg[rr][cc] >= 0) cand.push([r, c, reg[rr][cc]]);
+        }
+      }
+      const small = cand.filter((x) => size[x[2]] < maxSize);
+      if (small.length) cand = small;
+      let tot = 0; for (const x of cand) tot += weight[x[2]];
+      let t = Math.random() * tot, pick = cand[0];
+      for (const x of cand) { t -= weight[x[2]]; if (t <= 0) { pick = x; break; } }
+      reg[pick[0]][pick[1]] = pick[2];
+      size[pick[2]]++;
+      left--;
+    }
+    return reg;
+  }
+
+  function solve(n, reg, limit) {
+    const sols = [], colUsed = Array(n).fill(false), regUsed = Array(n).fill(false), pos = [];
+    (function bt(r) {
+      if (sols.length >= limit) return;
+      if (r === n) { sols.push(pos.slice()); return; }
+      for (let c = 0; c < n; c++) {
+        const g = reg[r][c];
+        if (colUsed[c] || regUsed[g] || (r > 0 && Math.abs(pos[r - 1] - c) <= 1)) continue;
+        colUsed[c] = regUsed[g] = true; pos[r] = c;
+        bt(r + 1);
+        colUsed[c] = regUsed[g] = false;
+      }
+    })(0);
+    return sols;
+  }
+
+  function connectedWithout(n, reg, id, sr, sc) {
+    const cells = [];
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (reg[r][c] === id && !(r === sr && c === sc)) cells.push([r, c]);
+    if (!cells.length) return false;
+    const seen = new Set([cells[0].join()]), stack = [cells[0]];
+    while (stack.length) {
+      const [r, c] = stack.pop();
+      for (const [dr, dc] of DIRS) {
+        const rr = r + dr, cc = c + dc, k = rr + ',' + cc;
+        if (rr < 0 || rr >= n || cc < 0 || cc >= n || seen.has(k) || reg[rr][cc] !== id || (rr === sr && cc === sc)) continue;
+        seen.add(k); stack.push([rr, cc]);
+      }
+    }
+    return seen.size === cells.length;
+  }
+
+  // quantas regiões têm 1 casa só (entregam a coroa de graça)
+  function tinyRegions(n, reg) {
+    const count = Array(n).fill(0);
+    for (const row of reg) for (const g of row) count[g]++;
+    return count.filter((k) => k === 1).length;
+  }
+
+  // gera regiões e ajusta até a solução ser única
+  function uniquePuzzle(n) {
+    let last = null;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const q = randomQueens(n), reg = growRegions(n, q);
+      last = { n, reg, sol: q };
+      for (let it = 0; it < 400; it++) {
+        const sols = solve(n, reg, 2);
+        if (sols.length === 1) {
+          if (tinyRegions(n, reg) <= 1) return { n, reg, sol: q };
+          break; // fácil demais: tenta outro
+        }
+        const alt = sols.find((s) => s.some((c, r) => c !== q[r]));
+        // "quebra" a solução alternativa: passa uma das coroas dela para a região vizinha
+        let changed = false;
+        for (const [r, c] of shuffle(alt.map((c, r) => [r, c]).filter(([r, c]) => q[r] !== c))) {
+          const cur = reg[r][c];
+          const neigh = shuffle(DIRS.map(([dr, dc]) => [r + dr, c + dc])
+            .filter(([rr, cc]) => rr >= 0 && rr < n && cc >= 0 && cc < n && reg[rr][cc] !== cur)
+            .map(([rr, cc]) => reg[rr][cc]));
+          if (!neigh.length || !connectedWithout(n, reg, cur, r, c)) continue;
+          reg[r][c] = neigh[0];
+          changed = true;
+          break;
+        }
+        if (!changed) break;
+      }
+    }
+    return last; // raríssimo: aceita mesmo sem unicidade (a vitória é checada pelas regras)
+  }
+
+  // ---------- dificuldade: resolve "como uma pessoa" e vê que técnica foi preciso usar ----------
+  // 1: única casa possível numa linha/coluna/região
+  // 2: uma casa que eliminaria todas as opções de alguma linha/coluna/região vira X
+  // 3: k regiões presas em k linhas (ou colunas, e variações) liberam o resto dessas linhas
+  // 4: testar uma coroa e ver que ela leva a contradição
+  // 99: só resolve chutando (descartado)
+  function rate(n, reg) {
+    const N = n * n;
+    const rowOf = (i) => (i / n) | 0, colOf = (i) => i % n, regOf = (i) => reg[rowOf(i)][colOf(i)];
+    const typeOf = [rowOf, colOf, regOf];
+    const units = [];
+    for (let r = 0; r < n; r++) units.push(range(n).map((c) => r * n + c));
+    for (let c = 0; c < n; c++) units.push(range(n).map((r) => r * n + c));
+    const regCells = range(n).map(() => []);
+    for (let i = 0; i < N; i++) regCells[regOf(i)].push(i);
+    units.push(...regCells);
+    const A = new Uint8Array(N * N);
+    const att = range(N).map((i) => range(N).filter((j) => {
+      const hit = i !== j && (rowOf(i) === rowOf(j) || colOf(i) === colOf(j) || regOf(i) === regOf(j) ||
+        (Math.abs(rowOf(i) - rowOf(j)) <= 1 && Math.abs(colOf(i) - colOf(j)) <= 1));
+      if (hit) A[i * N + j] = 1;
+      return hit;
+    }));
+    const bits = (x) => { let k = 0; while (x) { x &= x - 1; k++; } return k; };
+
+    function place(st, i) {
+      st[i] = 2;
+      for (const j of att[i]) { if (st[j] === 2) return false; st[j] = 1; }
+      return true;
+    }
+    function singles(st) { // -1 contradição, 0 nada, 1 mudou
+      let changed = 0;
+      for (const u of units) {
+        let crowns = 0, k = 0, cand = -1;
+        for (const i of u) { if (st[i] === 2) crowns++; else if (st[i] === 0) { k++; cand = i; } }
+        if (crowns > 1) return -1;
+        if (crowns === 1) continue;
+        if (k === 0) return -1;
+        if (k === 1) { if (!place(st, cand)) return -1; changed = 1; }
+      }
+      return changed;
+    }
+    function attackStep(st) {
+      let changed = 0;
+      for (const u of units) {
+        if (u.some((i) => st[i] === 2)) continue;
+        const C = u.filter((i) => st[i] === 0);
+        for (let i = 0; i < N; i++) {
+          if (st[i] !== 0 || C.includes(i)) continue;
+          if (C.every((j) => A[i * N + j])) { st[i] = 1; changed = 1; }
+        }
+      }
+      return changed;
+    }
+    function groupStep(st) {
+      let changed = 0;
+      for (let ta = 0; ta < 3; ta++) for (let tb = 0; tb < 3; tb++) {
+        if (ta === tb) continue;
+        const open = [];
+        for (let a = 0; a < n; a++) {
+          const u = units[ta * n + a];
+          if (u.some((i) => st[i] === 2)) continue;
+          let mask = 0;
+          for (const i of u) if (st[i] === 0) mask |= 1 << typeOf[tb](i);
+          open.push({ a, mask });
+        }
+        const m = open.length;
+        for (let s = 1; s < (1 << m); s++) {
+          const k = bits(s);
+          if (k < 2 || k >= m) continue;
+          let uni = 0, amask = 0;
+          for (let x = 0; x < m; x++) if ((s >> x) & 1) { uni |= open[x].mask; amask |= 1 << open[x].a; }
+          if (bits(uni) !== k) continue;
+          for (let i = 0; i < N; i++) {
+            if (st[i] === 0 && ((uni >> typeOf[tb](i)) & 1) && !((amask >> typeOf[ta](i)) & 1)) { st[i] = 1; changed = 1; }
+          }
+        }
+      }
+      return changed;
+    }
+    function propagate(st) {
+      for (;;) {
+        const s = singles(st);
+        if (s < 0) return -1;
+        if (s || attackStep(st) || groupStep(st)) continue;
+        return 0;
+      }
+    }
+    function trialStep(st) {
+      for (let i = 0; i < N; i++) {
+        if (st[i] !== 0) continue;
+        const t = st.slice();
+        if (!place(t, i) || propagate(t) < 0) { st[i] = 1; return 1; }
+      }
+      return 0;
+    }
+
+    const st = new Uint8Array(N);
+    let level = 1;
+    for (;;) {
+      const s = singles(st);
+      if (s < 0) return 99;
+      let crowns = 0;
+      for (let i = 0; i < N; i++) if (st[i] === 2) crowns++;
+      if (crowns === n) return level;
+      if (s) continue;
+      if (attackStep(st)) { level = Math.max(level, 2); continue; }
+      if (groupStep(st)) { level = Math.max(level, 3); continue; }
+      if (trialStep(st)) { level = Math.max(level, 4); continue; }
+      return 99;
+    }
+  }
+
+  // procura um puzzle com a dificuldade alvo (dentro de um limite de tempo)
+  function generate(n, target, budgetMs = 1500) {
+    const t0 = Date.now();
+    let best = null;
+    for (;;) {
+      const p = uniquePuzzle(n);
+      const level = rate(n, p.reg);
+      if (level <= 4) {
+        const d = Math.abs(level - target);
+        if (!best || d < best.d) best = Object.assign(p, { level, d });
+        if (d === 0) break;
+      }
+      const dt = Date.now() - t0;
+      if ((best && dt > budgetMs) || dt > budgetMs * 4) break;
+    }
+    return best || Object.assign(uniquePuzzle(n), { level: 4 });
+  }
+
+  // ---------- estado ----------
+  let S = null;          // { fase, total, n, reg, sol, colors, marks, elapsed, hints, won }
+  let undo = [];
+  let timer = null, saved = false;
+
+  const marksCopy = () => S.marks.map((row) => row.slice());
+
+  function newPuzzle() {
+    boardEl.classList.add('loading');
+    boardEl.classList.remove('won');
+    setTimeout(() => {
+      const n = SIZE;
+      const p = generate(n, targetFor(S.fase));
+      const colors = shuffle(COLORS.slice()).slice(0, n);
+      Object.assign(S, { n, reg: p.reg, sol: p.sol, level: p.level, colors, marks: range(n).map(() => Array(n).fill(0)), elapsed: 0, hints: 0, won: false });
+      undo = [];
+      saved = false;
+      persist();
+      buildBoard();
+      boardEl.classList.remove('loading');
+      startTimer();
+    }, 30);
+  }
+
+  function persist() { store.set(STATE_KEY, S); }
+
+  // ---------- render ----------
+  let cellEls = [];
+  function buildBoard() {
+    const { n, reg, colors } = S;
+    boardEl.querySelectorAll('.cell').forEach((e) => e.remove());
+    boardEl.style.setProperty('--n', n);
+    boardEl.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+    boardEl.style.gridTemplateRows = `repeat(${n}, 1fr)`;
+    cellEls = [];
+    for (let r = 0; r < n; r++) {
+      cellEls.push([]);
+      for (let c = 0; c < n; c++) {
+        const d = document.createElement('div');
+        d.className = 'cell';
+        d.dataset.r = r; d.dataset.c = c;
+        d.style.setProperty('--c', colors[reg[r][c]]);
+        const g = reg[r][c];
+        const thick = (rr, cc) => rr < 0 || rr >= n || cc < 0 || cc >= n || reg[rr][cc] !== g;
+        const T = 'var(--line)', t = 'rgba(18,16,31,.22)';
+        const sh = [
+          `inset 0 ${thick(r - 1, c) ? 2 : 0.5}px 0 ${thick(r - 1, c) ? T : t}`,
+          `inset 0 -${thick(r + 1, c) ? 2 : 0.5}px 0 ${thick(r + 1, c) ? T : t}`,
+          `inset ${thick(r, c - 1) ? 2 : 0.5}px 0 0 ${thick(r, c - 1) ? T : t}`,
+          `inset -${thick(r, c + 1) ? 2 : 0.5}px 0 0 ${thick(r, c + 1) ? T : t}`,
+        ];
+        d.style.setProperty('--b', sh.join(','));
+        boardEl.appendChild(d);
+        cellEls[r].push(d);
+      }
+    }
+    render();
+  }
+
+  function conflicts() {
+    const crowns = [];
+    S.marks.forEach((row, r) => row.forEach((m, c) => { if (m === 2) crowns.push([r, c]); }));
+    const bad = new Set();
+    for (let i = 0; i < crowns.length; i++) for (let j = i + 1; j < crowns.length; j++) {
+      const [r1, c1] = crowns[i], [r2, c2] = crowns[j];
+      if (r1 === r2 || c1 === c2 || S.reg[r1][c1] === S.reg[r2][c2] || (Math.abs(r1 - r2) <= 1 && Math.abs(c1 - c2) <= 1)) {
+        bad.add(r1 + ',' + c1); bad.add(r2 + ',' + c2);
+      }
+    }
+    return { crowns, bad };
+  }
+
+  function render() {
+    const { crowns, bad } = conflicts();
+    let i = 0;
+    for (let r = 0; r < S.n; r++) for (let c = 0; c < S.n; c++) {
+      const d = cellEls[r][c], m = S.marks[r][c];
+      d.innerHTML = m === 1 ? '<span class="x">✕</span>' : m === 2 ? CROWN : '';
+      d.classList.toggle('bad', m === 2 && bad.has(r + ',' + c));
+      if (m === 2) d.style.setProperty('--i', i++);
+    }
+    $('btnUndo').disabled = !undo.length || S.won;
+    updateHud();
+    if (!S.won && crowns.length === S.n && bad.size === 0) win();
+  }
+
+  const fmt = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  function updateHud() {
+    $('level').textContent = S.fase;
+    $('score').textContent = S.total.toLocaleString('pt-BR');
+    $('time').textContent = fmt(S.elapsed);
+    $('diff').textContent = S.level ? 'Dificuldade: ' + DIFF_NAME[Math.min(4, S.level)] : '';
+  }
+
+  function startTimer() {
+    clearInterval(timer);
+    timer = setInterval(() => {
+      if (S.won || document.hidden) return;
+      S.elapsed++;
+      updateHud();
+      if (S.elapsed % 5 === 0) persist();
+    }, 1000);
+  }
+
+  function msg(text) {
+    $('msg').textContent = text;
+    clearTimeout(msg.t);
+    msg.t = setTimeout(() => { $('msg').textContent = ''; }, 3000);
+  }
+
+  // ---------- interação ----------
+  let press = null;
+  const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest ? el.closest('.cell') : null; };
+
+  boardEl.addEventListener('pointerdown', (e) => {
+    const d = e.target.closest('.cell');
+    if (!d || S.won || boardEl.classList.contains('loading')) return;
+    e.preventDefault();
+    boardEl.setPointerCapture(e.pointerId);
+    press = { r: +d.dataset.r, c: +d.dataset.c, drag: false, before: marksCopy(), pid: e.pointerId };
+  });
+
+  boardEl.addEventListener('pointermove', (e) => {
+    if (!press || e.pointerId !== press.pid) return;
+    const d = cellAt(e.clientX, e.clientY);
+    if (!d) return;
+    const r = +d.dataset.r, c = +d.dataset.c;
+    if (!press.drag && r === press.r && c === press.c) return;
+    if (!press.drag) {
+      press.drag = true;
+      press.last = [press.r, press.c];
+      if (S.marks[press.r][press.c] === 0) S.marks[press.r][press.c] = 1;
+    }
+    // marca todas as casas no caminho (movimentos rápidos pulam casas)
+    let [lr, lc] = press.last;
+    if (lr === r && lc === c) return;
+    while (lr !== r || lc !== c) {
+      lr += Math.sign(r - lr); lc += Math.sign(c - lc);
+      if (S.marks[lr][lc] === 0) S.marks[lr][lc] = 1;
+    }
+    press.last = [r, c];
+    render();
+  });
+
+  function endPress(e) {
+    if (!press || e.pointerId !== press.pid) return;
+    const p = press;
+    press = null;
+    if (!p.drag) S.marks[p.r][p.c] = (S.marks[p.r][p.c] + 1) % 3;
+    if (JSON.stringify(p.before) !== JSON.stringify(S.marks)) { undo.push(p.before); if (undo.length > 200) undo.shift(); }
+    render();
+    persist();
+  }
+  boardEl.addEventListener('pointerup', endPress);
+  boardEl.addEventListener('pointercancel', endPress);
+
+  $('btnUndo').addEventListener('click', () => {
+    if (!undo.length || S.won) return;
+    S.marks = undo.pop();
+    render(); persist();
+  });
+
+  $('btnClear').addEventListener('click', () => {
+    if (S.won || !S.marks.some((row) => row.some(Boolean))) return;
+    undo.push(marksCopy());
+    S.marks = range(S.n).map(() => Array(S.n).fill(0));
+    render(); persist();
+  });
+
+  function flash(r, c) {
+    const d = cellEls[r][c];
+    d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash');
+  }
+
+  $('btnHint').addEventListener('click', () => {
+    if (S.won || boardEl.classList.contains('loading')) return;
+    undo.push(marksCopy());
+    S.hints++;
+    const { n, sol, marks } = S;
+    // 1) coroa no lugar errado
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (marks[r][c] === 2 && sol[r] !== c) { marks[r][c] = 1; render(); persist(); flash(r, c); msg('Essa coroa estava no lugar errado.'); return; }
+    }
+    // 2) X onde deveria ter coroa
+    for (let r = 0; r < n; r++) if (marks[r][sol[r]] === 1) {
+      marks[r][sol[r]] = 0; render(); persist(); flash(r, sol[r]); msg('Esse X estava numa casa que precisa de coroa.'); return;
+    }
+    // 3) revela uma coroa
+    const missing = range(n).filter((r) => marks[r][sol[r]] !== 2);
+    const r = missing[rnd(missing.length)];
+    marks[r][sol[r]] = 2;
+    render(); persist(); flash(r, sol[r]); msg('Uma coroa revelada.');
+  });
+
+  // ---------- vitória / pontuação ----------
+  // pontos: base pela dificuldade + bônus de tempo - dicas
+  function puzzlePoints() {
+    const { elapsed, hints } = S;
+    const lv = Math.min(4, S.level || 2);
+    const base = 300 + lv * 200, target = lv * 60;
+    return Math.max(100, base + Math.max(0, target - elapsed) * 5 - hints * 150);
+  }
+
+  function win() {
+    S.won = true;
+    clearInterval(timer);
+    const pts = puzzlePoints();
+    S.total += pts;
+    S.lastPts = pts;
+    persist();
+    updateHud();
+    boardEl.classList.add('won');
+    $('winPts').textContent = '+' + pts.toLocaleString('pt-BR');
+    $('winInfo').innerHTML = `Fase ${S.fase} · ${DIFF_NAME[Math.min(4, S.level || 2)]} · ${fmt(S.elapsed)}` +
+      (S.hints ? ` · ${S.hints} dica${S.hints > 1 ? 's' : ''}` : '') +
+      `<br>Total: <b>${S.total.toLocaleString('pt-BR')}</b>`;
+    $('nome').value = store.get(NAME_KEY, '');
+    $('btnSave').disabled = false;
+    $('saveStatus').textContent = hasGAS ? '' : 'Modo local: sem conexão com a planilha.';
+    setTimeout(() => {
+      $('overlay').classList.remove('hidden');
+      if (hasGAS && $('nome').value) saveScore();
+    }, 900);
+  }
+
+  function saveScore() {
+    if (saved) return;
+    const nome = $('nome').value.trim();
+    if (!nome) { $('saveStatus').textContent = 'Digite seu nome para salvar.'; $('nome').focus(); return; }
+    store.set(NAME_KEY, nome);
+    if (!hasGAS) { $('saveStatus').textContent = 'Modo local: sem conexão com a planilha.'; return; }
+    $('btnSave').disabled = true;
+    $('saveStatus').textContent = 'Salvando…';
+    google.script.run
+      .withSuccessHandler(() => { saved = true; $('saveStatus').textContent = '✓ Salvo na planilha'; })
+      .withFailureHandler((err) => {
+        $('btnSave').disabled = false;
+        $('saveStatus').textContent = 'Erro ao salvar: ' + (err && err.message ? err.message : err);
+      })
+      .salvarScore({ jogo: GAME_ID, nome, pontos: S.total, fase: S.fase, tempo: S.elapsed });
+  }
+
+  function nextPuzzle() {
+    $('overlay').classList.add('hidden');
+    S.fase++;
+    newPuzzle();
+  }
+
+  function restart() {
+    $('overlay').classList.add('hidden');
+    S = { fase: 1, total: 0 };
+    newPuzzle();
+  }
+
+  $('btnSave').addEventListener('click', saveScore);
+  $('nome').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveScore(); });
+  $('btnNext').addEventListener('click', nextPuzzle);
+  $('btnRestart').addEventListener('click', () => {
+    if (confirm('Recomeçar da fase 1? Seus pontos voltam a zero.')) restart();
+  });
+
+  if (hasGAS) {
+    google.script.run.withSuccessHandler((url) => {
+      const a = $('btnMenu'); a.href = url; a.style.visibility = 'visible';
+    }).getUrl();
+  }
+
+  // ---------- início ----------
+  const saved0 = store.get(STATE_KEY, null);
+  if (saved0 && saved0.reg && saved0.marks) {
+    S = saved0;
+    if (S.won) { S.fase++; newPuzzle(); } // fechou na tela de vitória: segue para a próxima
+    else { buildBoard(); boardEl.classList.remove('loading'); startTimer(); }
+  } else {
+    S = { fase: 1, total: 0 };
+    newPuzzle();
+  }
+
+  // exposto só para testes
+  window.__coroas = { generate, solve, rate, uniquePuzzle };
+})();
+</script>
+</body>
+</html>
